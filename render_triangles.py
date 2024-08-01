@@ -2,6 +2,59 @@ import bpy
 import bmesh
 from mathutils import Vector
 import numpy as np
+import math
+import random
+
+def point_on_sphere(radius, theta, phi):
+    """
+    Convert spherical coordinates to Cartesian coordinates.
+    
+    :param radius: Radius of the sphere
+    :param theta: Polar angle (in radians)
+    :param phi: Azimuthal angle (in radians)
+    :return: Cartesian coordinates (x, y, z)
+    """
+    x = radius * math.sin(theta) * math.cos(phi)
+    y = radius * math.sin(theta) * math.sin(phi)
+    z = radius * math.cos(theta)
+    return (x, y, z)
+
+def is_object_inside_sphere(obj, sphere_center, sphere_radius):
+    info = {"bool": True, "distance": 0.0}
+    if obj.type != 'MESH':
+        raise TypeError(f"Object '{obj.name}' is not a mesh object.")
+    
+    world_matrix = obj.matrix_world
+    for vertex in obj.data.vertices:
+        world_coord = world_matrix @ vertex.co
+        distance = (world_coord - sphere_center).length
+        
+        if distance > sphere_radius:
+            info["bool"] = False
+            info["distance"] = distance
+     
+    return info
+
+def make_camera_look_at(camera_name, target_name):
+    # Get the camera and target objects by name
+    camera = bpy.data.objects.get(camera_name)
+    target = bpy.data.objects.get(target_name)
+    
+    if not camera:
+        print(f"Camera '{camera_name}' not found.")
+        return
+    
+    if not target:
+        print(f"Target object '{target_name}' not found.")
+        return
+    
+    # Create a new track to constraint
+    constraint = camera.constraints.new(type='TRACK_TO')
+    constraint.target = target
+    constraint.track_axis = 'TRACK_NEGATIVE_Z'
+    constraint.up_axis = 'UP_Y'
+    
+    print(f"Camera '{camera_name}' is now looking at '{target_name}'.")
 
 
 data = np.array([
@@ -34,22 +87,25 @@ if not camera_exists:
     bpy.context.collection.objects.link(cam)
     bpy.context.scene.camera = cam
 
+light_exists = any(obj.type == 'LIGHT' for obj in bpy.context.scene.objects)
+if not light_exists:
 # Add a light source
-light_data = bpy.data.lights.new(name='Light', type='POINT')
-light = bpy.data.objects.new(name='Light', object_data=light_data)
-bpy.context.collection.objects.link(light)
-light.location = (5, -5, 10)
+    light_data = bpy.data.lights.new(name='Light', type='POINT')
+    light = bpy.data.objects.new(name='Light', object_data=light_data)
+    bpy.context.collection.objects.link(light)
+    light.location = (5, -5, 10)
+
 
 for i in range(0, len(data), 3):
     trio = data[i:i+3]
     # Extract vertices from the data
     trio_dicts = []
     for identifier, x, y, z, nx, ny, nz in trio:
-        mesh_info = {} 
-        mesh_info["id"] = identifier
-        mesh_info["vertices"] = (100 * x, 100 * y, 100 * z)
-        mesh_info["normal"] = (nx, ny, nz)
-        trio_dicts.append(mesh_info)
+        point_info = {} 
+        point_info["id"] = identifier
+        point_info["vertices"] = (x, y, z)
+        point_info["normal"] = (nx, ny, nz)
+        trio_dicts.append(point_info)
 
 
     # Create a new mesh and object
@@ -58,9 +114,8 @@ for i in range(0, len(data), 3):
 
     # Link the object to the scene
     bpy.context.collection.objects.link(obj)
-    
-    obj.location = (0,0,0)
 
+    
     # Create the mesh from the vertices
     verts = [i["vertices"] for i in trio_dicts]
     mesh.from_pydata(verts, [], [])
@@ -75,23 +130,24 @@ for i in range(0, len(data), 3):
     bpy.ops.mesh.edge_face_add()
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    
-    
-    camera = bpy.data.objects.get('Camera')
-    #point cam at origin
-    # Define the origin point
-    origin = Vector((0.0, 0.0, 0.0))
-    
-    # Calculate the direction from the camera to the origin
-    direction = origin - camera.location
-    
-    # Point the camera at the origin
-    # Calculate the rotation quaternion that points the camera at the direction
-    rot_quat = direction.to_track_quat('-Z', 'Y')
-    
-    # Apply the rotation to the camera
-    camera.rotation_euler = rot_quat.to_euler()
+    #move origin to center of mass of the surface
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    # Set the origin to the center of the geometry
+    bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS', center='BOUNDS')
 
+    obj.location = (0,0,0)
+    
+
+    camera = bpy.data.objects.get('Camera')
+    # Parameters
+    radius = 20  # Radius of the sphere
+    theta = random.uniform(0, math.pi)  # Polar angle, range [0, pi]
+    phi = random.uniform(0, 2 * math.pi)  # Azimuthal angle, range [0, 2*pi]
+
+    camera.location = point_on_sphere(radius, theta, phi)
+    #point cam at origin
+    make_camera_look_at("Camera", "Object")    
     #Render the frame
     # Set render settings
     bpy.context.scene.render.image_settings.file_format = 'PNG'
