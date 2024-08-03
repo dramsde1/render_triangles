@@ -155,4 +155,4 @@ for i in range(0, len(data), 3):
 
     # Render the image
     bpy.ops.render.render(write_still=True)
-
+    breakpoint()
