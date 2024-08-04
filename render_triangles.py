@@ -1,9 +1,7 @@
 import bpy
-import bmesh
-from mathutils import Vector
-import numpy as np
 import math
 import random
+import mathutils
 
 def point_on_sphere(radius, theta, phi):
     """
@@ -18,22 +16,6 @@ def point_on_sphere(radius, theta, phi):
     y = radius * math.sin(theta) * math.sin(phi)
     z = radius * math.cos(theta)
     return (x, y, z)
-
-def is_object_inside_sphere(obj, sphere_center, sphere_radius):
-    info = {"bool": True, "distance": 0.0}
-    if obj.type != 'MESH':
-        raise TypeError(f"Object '{obj.name}' is not a mesh object.")
-    
-    world_matrix = obj.matrix_world
-    for vertex in obj.data.vertices:
-        world_coord = world_matrix @ vertex.co
-        distance = (world_coord - sphere_center).length
-        
-        if distance > sphere_radius:
-            info["bool"] = False
-            info["distance"] = distance
-     
-    return info
 
 def make_camera_look_at(camera_name, target_name):
     # Get the camera and target objects by name
@@ -56,103 +38,69 @@ def make_camera_look_at(camera_name, target_name):
     
     print(f"Camera '{camera_name}' is now looking at '{target_name}'.")
 
+def render_object(stl_file_path: str, output_path: str, radius:float, theta: float, phi: float):
+    camera_exists = any(obj.type == 'CAMERA' for obj in bpy.context.scene.objects)
+    if not camera_exists:
+        #Setup Camera and Lighting
+        # Add a camera
+        cam_data = bpy.data.cameras.new(name='Camera')
+        cam = bpy.data.objects.new('Camera', cam_data)
+        bpy.context.collection.objects.link(cam)
+        bpy.context.scene.camera = cam
 
-data = np.array([
-    [0, -56.8390007019043, 10.87399959564209, 0, 0, 0, -1],
-    [0, -56.71500015258789, 10.107999801635742, 0, 0, 0, -1],
-    [0, -62.29999923706055, 6.566999912261963, 0, 0, 0, -1],
-    [1, -56.71500015258789, 10.107999801635742, 0, 0, 0, -1],
-    [1, -56.67100143432617, 9.154000282287598, 0, 0, 0, -1],
-    [1, -62.29999923706055, 6.566999912261963, 0, 0, 0, -1],
-    [2, -56.67100143432617, 9.154000282287598, 0, 0, 0, -1],
-    [2, -56.678001403808594, 8.61299991607666, 0, 0, 0, -1],
-    [2, -62.29999923706055, 6.566999912261963, 0, 0, 0, -1],
-    [3, -62.15700149536133, 6.364999771118164, 0, 0, 0, -1],
-    [3, -62.29999923706055, 6.566999912261963, 0, 0, 0, -1],
-    [3, -56.678001403808594, 8.61299991607666, 0, 0, 0, -1],
-    [4, -56.75600051879883, 7.420000076293945, 0, 0, 0, -1],
-    [4, -62.15700149536133, 6.364999771118164, 0, 0, 0, -1],
-    [4, -56.678001403808594, 8.61299991607666, 0, 0, 0, -1],
-    [5, -56.922000885009766, 6.0920000076293945, 0, 0, 0, -1],
-    [5, -62.15700149536133, 6.364999771118164, 0, 0, 0, -1],
-    [5, -56.75600051879883, 7.420000076293945, 0, 0, 0, -1]
-])
+    light_exists = any(obj.type == 'LIGHT' for obj in bpy.context.scene.objects)
+    if not light_exists:
+        # Add a light source
+        light_data = bpy.data.lights.new(name='Light', type='POINT')
+        light = bpy.data.objects.new(name='Light', object_data=light_data)
+        bpy.context.collection.objects.link(light)
+        light.location = (5, -5, 10)
 
-camera_exists = any(obj.type == 'CAMERA' for obj in bpy.context.scene.objects)
-if not camera_exists:
-    #Setup Camera and Lighting
-    # Add a camera
-    cam_data = bpy.data.cameras.new(name='Camera')
-    cam = bpy.data.objects.new('Camera', cam_data)
-    bpy.context.collection.objects.link(cam)
-    bpy.context.scene.camera = cam
+    #import stl
+    # Import the STL file
+    file_path = stl_file_path 
+    bpy.ops.import_mesh.stl(filepath=file_path)
 
-light_exists = any(obj.type == 'LIGHT' for obj in bpy.context.scene.objects)
-if not light_exists:
-# Add a light source
-    light_data = bpy.data.lights.new(name='Light', type='POINT')
-    light = bpy.data.objects.new(name='Light', object_data=light_data)
-    bpy.context.collection.objects.link(light)
-    light.location = (5, -5, 10)
-
-
-for i in range(0, len(data), 3):
-    trio = data[i:i+3]
-    # Extract vertices from the data
-    trio_dicts = []
-    for identifier, x, y, z, nx, ny, nz in trio:
-        point_info = {} 
-        point_info["id"] = identifier
-        point_info["vertices"] = (x, y, z)
-        point_info["normal"] = (nx, ny, nz)
-        trio_dicts.append(point_info)
-
-
-    # Create a new mesh and object
-    mesh = bpy.data.meshes.new(name=str(trio_dicts[0]["id"]))
-    obj = bpy.data.objects.new(name="Object", object_data=mesh)
-
-    # Link the object to the scene
-    bpy.context.collection.objects.link(obj)
-
-    
-    # Create the mesh from the vertices
-    verts = [i["vertices"] for i in trio_dicts]
-    mesh.from_pydata(verts, [], [])
-    mesh.update()
-    
-    obj.select_set(True)
-    bpy.context.view_layer.objects.active = obj
-
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_all(action='DESELECT')
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.edge_face_add()
-    bpy.ops.object.mode_set(mode='OBJECT')
-
-    #move origin to center of mass of the surface
-    bpy.context.view_layer.objects.active = obj
-    obj.select_set(True)
-    # Set the origin to the center of the geometry
+    # Optionally, you can center the imported object
     bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS', center='BOUNDS')
+    bpy.ops.object.location_clear()
+    obj = bpy.context.object
 
-    obj.location = (0,0,0)
-    
-
+    #position camera
     camera = bpy.data.objects.get('Camera')
-    # Parameters
-    radius = 20  # Radius of the sphere
-    theta = random.uniform(0, math.pi)  # Polar angle, range [0, pi]
-    phi = random.uniform(0, 2 * math.pi)  # Azimuthal angle, range [0, 2*pi]
+    # Get the bounding box dimensions of the object
+    bbox_corners = [obj.matrix_world @ mathutils.Vector(corner) for corner in obj.bound_box]
+    bbox_center = 0.125 * sum((mathutils.Vector(corner) for corner in bbox_corners), mathutils.Vector())
+
+    # Calculate the distance to fit the object within the cameraera’s view
+    scene = bpy.context.scene
+    camera_data = camera.data
+    frame = camera_data.sensor_width / camera_data.lens
+
+    max_dim = max(obj.dimensions)
+    distance = max_dim / (2 * math.tan(camera_data.angle / 2))
 
     camera.location = point_on_sphere(radius, theta, phi)
     #point cam at origin
     make_camera_look_at("Camera", "Object")    
+
+    #focus
+    # Adjust the cameraera's focal length if necessary
+    camera_data.lens = max_dim / frame * 0.5
+
+    # Align the cameraera with the object
+    camera.rotation_euler = (math.pi/2, 0, 0)
+    camera.select_set(True)
+    bpy.ops.object.track_set(type='TRACKTO')
+
+
     #Render the frame
     # Set render settings
     bpy.context.scene.render.image_settings.file_format = 'PNG'
-    bpy.context.scene.render.filepath = "/Users/ramsddc1/Documents/TEMP/example.png"
+    bpy.context.scene.render.filepath = output_path
 
     # Render the image
     bpy.ops.render.render(write_still=True)
-    breakpoint()
+
+
+render_object(stl_file_path="/Users/ramsddc1/Documents/TEMP/bunny-converted-ASCII.stl", output_path="/Users/ramsddc1/Documents/TEMP/example.png", radius=500, theta=random.uniform(0,math.pi), phi=random.uniform(0,2*math.pi))
